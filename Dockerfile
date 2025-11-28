@@ -39,11 +39,15 @@ RUN apt-get update && \
     graphviz \
     python3-pip \
     pipx \
-    python3-six
-
+    python3-six \
+    python3-dotenv
+    
 # `six` and `spdx_lookup` packages are required to run `utils/scanpypi` which 
 # fetchs python-packages from the PyPI repository: https://pypi.python.org/
 # and to improve its licenses detection.
+
+# `dotenv` is used by Python scripts developed by V&A that use Environment
+# variables to build the images.
 
 RUN pipx install spdx_lookup
 
