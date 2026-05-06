@@ -1,12 +1,18 @@
-# OS generated files #
-######################
+# macOS
 .DS_Store
-.DS_Store?
-.pytest_cache
-.ssh
-images
-target
-# This is where another repository will be stored.
-buildroot/
-# Other temporal folders
 .VSCodeCounter
+
+# Python
+.pytest_cache
+
+# Secrets and local configuration (never commit)
+/_locals/
+/.ssh/
+
+# Buildroot source (cloned separately, not part of this repo)
+/buildroot/
+
+# Build outputs (host-side bind mounts, populated at runtime)
+/images/
+/target/
+/graphs/
