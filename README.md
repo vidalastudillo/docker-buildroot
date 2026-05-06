@@ -15,11 +15,17 @@ download cache, and CCache.
 ```
 docker-buildroot/              ← this repo (shared infrastructure)
   Dockerfile                   ← Ubuntu 24.04 build environment
-  buildroot/                   ← Buildroot source (cloned separately, bind-mounted)
+  BUILDROOT_VERSION            ← Buildroot fork and branch (source of truth)
+  buildroot/                   ← Buildroot source (cloned via bootstrap.sh, bind-mounted)
+  scripts/
+    bootstrap.sh               ← clones/updates buildroot/ from BUILDROOT_VERSION
+    colima.sh                  ← manages Colima VM on external SSD (macOS)
+    run_template.sh            ← template for new BR2_EXTERNAL run scripts
   externals/
     my_project/                ← a BR2_EXTERNAL repo (cloned here)
       run_my_target.sh         ← calls docker from the root of this repo
     another_project/           ← another BR2_EXTERNAL repo
+  _locals/                     ← secrets and local config (gitignored, not committed)
   images/  target/  graphs/   ← build outputs, organized by project/target
 ```
 
