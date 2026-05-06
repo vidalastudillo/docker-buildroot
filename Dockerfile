@@ -61,17 +61,9 @@ RUN mkdir -p /buildroot_externals
 
 WORKDIR /root/buildroot
 
-ENV O=/buildroot_output
-
 # The following is set after upgrading from ubuntu:20.04 to ubuntu:24.04
 # Otherwise the build process complains about running as a root.
 # More info at: https://stackoverflow.com/questions/69026206/running-buildroot-as-root-still-error-after-setting-force-unsafe-configure-1-in
 ENV FORCE_UNSAFE_CONFIGURE=1
-
-RUN touch .config
-RUN touch kernel.config
-
-# This will be volume that will contain Buildroot's results
-VOLUME /buildroot_output
 
 RUN ["/bin/bash"]

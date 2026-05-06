@@ -1,170 +1,159 @@
-# Buildroot
+# docker-buildroot
 
-A Docker image for using [Buildroot][buildroot]. It can be found on [Docker Hub][hub].
+Shared Docker infrastructure for running [Buildroot][buildroot] builds in an
+isolated, reproducible environment — independent of the host OS (macOS or
+Linux).
+
+It is designed to support multiple independent
+[BR2_EXTERNAL][br2_external] trees simultaneously, each with its own
+defconfigs, outputs, and run scripts, while sharing a common Buildroot source,
+download cache, and CCache.
+
+It is based on the original work by
+[Advanced Climate Systems][acs] and has been extended by
+[VIDAL & ASTUDILLO Ltda][va].
 
 
-# Quick Setup
+## Architecture
 
-Before start, be sure to set Docker Engine configuration on the host allows enough the disk space, processors and other resources. Number of processors and memory have a huge impact on the speed completion of the builds.
+```
+docker-buildroot/              ← this repo (shared infrastructure)
+  Dockerfile                   ← Ubuntu 24.04 build environment
+  buildroot/                   ← Buildroot source (cloned separately, bind-mounted)
+  externals/
+    my_project/                ← a BR2_EXTERNAL repo (cloned here)
+      run_my_target.sh         ← calls docker from the root of this repo
+    another_project/           ← another BR2_EXTERNAL repo
+  images/  target/  graphs/   ← build outputs, organized by project/target
+```
 
-1. Get a clone of this repo at your host:
+The Docker named volume `buildroot_workspace` holds all intermediate build
+artifacts (object files, CCache, downloads). It lives inside the Docker VM,
+keeping heavy I/O off the host filesystem.
 
-``` shell
+
+## Quick Setup
+
+### 1. Clone this repo
+
+```shell
 git clone https://github.com/vidalastudillo/docker-buildroot
+cd docker-buildroot
 ```
 
-2. Build the Docker image.
-
-``` shell
-docker build -t "advancedclimatesystems/buildroot" .
-```
-
-3. Create a [data-only container][data-only] to use as build and download cache and to store your build products.
-
-``` shell
-docker run -i --name buildroot_output advancedclimatesystems/buildroot /bin/echo "Data only."
-```
-
-This container has 2 volumes at `/root/buildroot/dl` and `/buildroot_output`.
-
-Buildroot downloads al data to the first volume, the last volume is used as build cache, cross compiler and build results.
-
-
-# Usage
-
-A small script has been provided to make using the container a little easier.
-
-It's located at [scripts/run.sh][run.sh]. Instructions below show how to build a kernel for the Raspberry Pi using the a defconfig provided by Buildroot.
-
-``` shell
-./scripts/run.sh make raspberrypi2_defconfig menuconfig
-./scripts/run.sh make
-```
-
-Build products are stored inside the container at `/buildroot_output/images`.
-Because `run.sh` mounts the local folder `images/` at this place the build products are also stored on the host.
-
-## External tree
-
-To use the custom external tree using the mechanism [described in the documentation][br2_external] related to the `BR2_EXTERNAL` environment variable, the following is required to be called once.
-
-``` shell
-./scripts/run.sh make BR2_EXTERNAL=/root/buildroot/externals/<your custom folder> menuconfig
-```
-
-From now on, the menuconfig will be aware of the content of the external tree and its identification (By reading the `external.desc` content).
-
-To verify the current settings, an inspection of the internal `br2-external.mk` can be done like this:
-
-``` shell
-./scripts/run.sh make
-```
-
-And once inside the container:
-
-``` shell
-cat /buildroot_output/.br2-external.mk
-```
-
-The mechanism related to `BR2_EXTERNAL` is helpful to reference the content of the tree in configuration files. For example, if the `name` defined in `external.desc` is `MYRPI2CFG`, then the `BR2_EXTERNAL_MYRPI2CFG_PATH` can be used to reference absolute paths.
-
-This is useful to tell buildroot where to save the configuration selecting something like this in the `menuconfig` (Assuming the previous defined `MYRPI2CFG` name):
-
-    --> Build options --> Location to save buildroot config: $(BR2_EXTERNAL_MYRPI2CFG_PATH)/configs/my_defconfig
-    Exit menuconfig (choose yes to Save) and do:
-
-To remove the external tree, an empty value can be used like this:
-
-``` shell
-./scripts/run.sh make BR2_EXTERNAL='' menuconfig
-```
-
-## Build with existing config
-
-Once the external tree has been configured as described in the previous section (in order to make buildroot be aware of it), the available configurations can be queried like this:
+### 2. Clone a Buildroot source
 
 ```shell
-./scripts/run.sh make list-defconfigs
+git clone https://git.buildroot.net/buildroot --branch=<version> ./buildroot
 ```
 
-To demonstrate its use, this repository contains a configuration to build a minimal root filesystem, with Python 3. This config is located at [external/configs/docker_python3_defconfig][docker_python3_defconfig].
-
-Selecting that custom config, cleaning a previous build and making it can be accomplished like this:
-
-```
-./scripts/run.sh make docker_python3_defconfig
-./scripts/run.sh make clean all
-./scripts/run.sh make
-```
-
-A modified configuration can be saved using something like this (replacing the text 'mycustom'):
+### 3. Clone your BR2_EXTERNAL tree(s)
 
 ```shell
-./scripts/run.sh make BR2_DEFCONFIG=/root/buildroot/externals/<your folder>/configs/mycustom_defconfig savedefconfig
+git clone https://github.com/<user>/<my_project> ./externals/my_project
 ```
 
-## Docker image from root filesystem
-
-Import the root filesystem in to Docker to create an image run it and start a container.
+### 4. Build the Docker image
 
 ```shell
-docker import - dietfs < images/rootfs.tar
-docker run --rm -ti dietfs sh
+docker buildx build -t va_buildroot .
 ```
 
-## Creating packages from private git repositories:
-
-The .mk can be defined like this when using Github:
-
-    THETEST_VERSION = main
-    THETEST_SITE = git@github.com:<your user name>/<repo name>
-    THETEST_SITE_METHOD = git
-
-Refrain to use `main` on the final version, to prevent issues [explained on the documentation][buildroot_generic_package].
-
-To make that work, the container has to be able to connect through SSH to GitHub:
-
-1. Follow the [documentation from GitHub about it][github_ssh].
-2. Place a folder named .ssh on the host computer with the generated identification and .PUB files to make those available to the container.
-
-To test this, get into the container:
-```shell
-./scripts/run.sh make
-```
-
-Once there, you have to get successful responses to commands like this:
+The image name defaults to `va_buildroot` across all run scripts. To use a
+different name, set the environment variable before running any script:
 
 ```shell
-ssh git@github.com
-git clone git@github.com:<your user name>/<repo name>
+export BUILDROOT_IMAGE=my_custom_image
+docker buildx build -t "$BUILDROOT_IMAGE" .
 ```
 
-This has been produced thanks to the invaluable support of `y_morin` and `troglobit` from the #buildroot IRC Channel.
+### 5. Create the shared workspace volume
+
+```shell
+docker volume create buildroot_workspace
+```
+
+This volume is shared across all externals. It holds:
+
+| Path inside volume | Contents |
+|--------------------|----------|
+| `/workspace/dl` | Downloaded source archives (shared) |
+| `/workspace/ccache` | Compiler cache (shared) |
+| `/workspace/outputs/<project>/<target>` | Per-target build tree |
 
 
-## Tips
+## Usage
 
-* Check [migrating Buildroot][migrating_buildroot] if you change the Buildroot version on the Dockerfile.
+Each BR2_EXTERNAL provides its own run script(s). They must be called from
+the root of this repo:
+
+```shell
+./externals/my_project/run_my_target.sh make my_defconfig
+./externals/my_project/run_my_target.sh make menuconfig
+./externals/my_project/run_my_target.sh make all
+```
+
+Build outputs (`images/`, `target/`, `graphs/`) are bind-mounted to the host
+under the corresponding subdirectory.
+
+For an interactive shell inside the container:
+
+```shell
+./externals/my_project/run_my_target.sh
+```
 
 
-# License
+## Creating a new BR2_EXTERNAL run script
 
-This software is licensed under Mozilla Public License.
-It is based on the original work by: 
-&copy; 2017 Auke Willem Oosterhoff and [Advanced Climate Systems][acs].
-It has been modified and extended by Mauricio Vidal from [VIDAL & ASTUDILLO Ltda][va].
+Copy the provided template and fill in the configuration section:
 
-[va]:https://www.vidalastudillo.com
-[acs]:http://advancedclimate.nl
-[buildroot]:http://buildroot.uclibc.org/
-[data-only]:https://docs.docker.com/userguide/dockervolumes/
-[hub]:https://hub.docker.com/r/advancedclimatesystems/docker-buildroot/builds/
-[run.sh]:scripts/run.sh
-[docker_python3_defconfig]:external/configs/docker_python3_defconfig
+```shell
+cp scripts/run_template.sh externals/my_project/run_my_target.sh
+chmod +x externals/my_project/run_my_target.sh
+```
 
-[br2_external]:http://buildroot.uclibc.org/downloads/manual/manual.html#outside-br-custom
-[docker_blog]:https://blog.docker.com/2013/06/create-light-weight-docker-containers-buildroot/
-[migrating_buildroot]:http://buildroot.uclibc.org/downloads/manual/manual.html#migrating-from-ol-versions
+Edit the variables at the top of the script:
 
-[github_ssh]:https://docs.github.com/en/authentication/connecting-to-github-with-ssh
-[buildroot_generic_package]:https://buildroot.org/downloads/manual/manual.html#generic-package-reference
+| Variable | Description |
+|----------|-------------|
+| `OUTPUT_NAME` | Subdirectory for outputs, e.g. `pi_swupdate/cm4` |
+| `MY_EXTERNAL` | Container path to the external tree(s) |
+| `CCACHE_LIMIT` | Maximum CCache size |
+
+The `BUILDROOT_IMAGE` variable is read from the environment, defaulting to
+`va_buildroot`.
+
+
+## Private repositories (GitHub token)
+
+For BR2_EXTERNAL trees that fetch packages from private GitHub repositories,
+pass a fine-grained Personal Access Token to the container via environment
+variable or secret mount. See the run scripts of those externals for the
+specific pattern used.
+
+
+## macOS notes
+
+On macOS with Colima, use the provided `externals/in/containers.sh` to host
+the Docker VM on an external SSD. This prevents internal SSD wear from the
+heavy I/O generated by Buildroot builds:
+
+```shell
+cd externals/in
+./containers.sh setup   # once — creates the VM on the external SSD
+./containers.sh up      # daily startup
+```
+
+
+## License
+
+Mozilla Public License.
+Based on original work &copy; 2017 Auke Willem Oosterhoff / [Advanced Climate Systems][acs].
+Extended by Mauricio Vidal / [VIDAL & ASTUDILLO Ltda][va].
+
+[va]: https://www.vidalastudillo.com
+[acs]: http://advancedclimate.nl
+[buildroot]: https://buildroot.org/
+[br2_external]: https://buildroot.org/downloads/manual/manual.html#outside-br-custom
+[migrating_buildroot]: https://buildroot.org/downloads/manual/manual.html#migrating-from-ol-versions
+[github_ssh]: https://docs.github.com/en/authentication/connecting-to-github-with-ssh
