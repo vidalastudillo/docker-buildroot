@@ -1,6 +1,6 @@
 #!/bin/bash
 # -----------------------------------------------------------------------------
-# containers.sh - Container Infrastructure Management (Colima)
+# colima.sh - Colima VM Management for Docker on macOS
 # Copyright (c) 2025-2026, VIDAL & ASTUDILLO Ltda and contributors.
 # www.vidalastudillo.com
 #
