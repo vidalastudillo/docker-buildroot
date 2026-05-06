@@ -1,4 +1,5 @@
-# Ignore everything...
+# Each BR2_EXTERNAL is an independent repository cloned into this directory.
+# Ignore everything so those repos are never accidentally committed here.
 *
 
 # ...except this file.
