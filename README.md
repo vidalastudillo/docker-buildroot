@@ -38,9 +38,11 @@ keeping heavy I/O off the host filesystem.
 ```shell
 git clone https://github.com/vidalastudillo/docker-buildroot
 cd docker-buildroot
-git clone https://git.buildroot.net/buildroot --branch=<version> ./buildroot
+./scripts/bootstrap.sh
 git clone https://github.com/<user>/<my_project> ./externals/my_project
 ```
+
+See [Buildroot source](#buildroot-source-buildroot_version) for details and the manual alternative.
 
 ### 2. Build the Docker image
 
@@ -111,6 +113,30 @@ Edit the variables at the top of the script:
 
 The `BUILDROOT_IMAGE` variable is read from the environment, defaulting to
 `va_buildroot`.
+
+
+## Buildroot source (`BUILDROOT_VERSION`)
+
+The Buildroot fork and branch used by this project are defined in `BUILDROOT_VERSION`:
+
+```
+BUILDROOT_REPO=https://github.com/vidalastudillo/buildroot.git
+BUILDROOT_BRANCH=2025.11.x
+```
+
+`scripts/bootstrap.sh` reads this file and clones or updates `buildroot/` to
+the tip of the configured branch. Using the script is recommended: any
+BR2_EXTERNAL or CI pipeline that calls it stays automatically in sync when
+`BUILDROOT_VERSION` changes — no manual updates needed across repositories.
+
+The script is optional. To clone manually using the values in `BUILDROOT_VERSION`:
+
+```shell
+source BUILDROOT_VERSION && git clone --branch "$BUILDROOT_BRANCH" "$BUILDROOT_REPO" ./buildroot
+```
+
+To use a different Buildroot fork or branch, edit `BUILDROOT_VERSION` before
+running the script.
 
 
 ## Local secrets (`_locals/`)

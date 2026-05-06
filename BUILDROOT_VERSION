@@ -1,0 +1,2 @@
+BUILDROOT_REPO=https://github.com/vidalastudillo/buildroot.git
+BUILDROOT_BRANCH=2025.11.x
