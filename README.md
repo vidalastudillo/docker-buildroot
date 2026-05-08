@@ -36,6 +36,11 @@ keeping heavy I/O off the host filesystem.
 
 ## Quick Setup
 
+> [!IMPORTANT]
+> **Read-Only Buildroot & SSD Protection**
+> To protect the host SSD (macOS) and ensure build integrity, the `buildroot/` directory is mounted as **Read-Only** (`:ro`). All builds MUST use `O=` and `BR2_DL_DIR` to point to the `/workspace/` volume. If you see a `Read-only file system` error, you are likely missing these parameters.
+
+
 > **macOS users:** if you plan to use an external SSD with Colima, complete the
 > [macOS setup](#macos-notes) before step 2 — the VM must be running before any `docker` command.
 
