@@ -32,7 +32,7 @@
 #    versions reject).
 #
 # OVERRIDABLE ENVIRONMENT VARIABLES:
-#   COLIMA_SSD_NAME   Name of the external SSD volume (default: "Container Image")
+#   COLIMA_SSD_NAME   Name of the external SSD volume (default: "ContainerImage")
 #   COLIMA_CPUS       Number of CPUs for the VM (default: 4)
 #   COLIMA_MEMORY     Memory in GiB for the VM (default: 10)
 #   COLIMA_DISK       Disk size in GiB for the VM (default: 100)
@@ -45,7 +45,7 @@ set -e
 # Resolve project root from the script's own location (scripts/ subdirectory)
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-SSD_NAME="${COLIMA_SSD_NAME:-Container Image}"
+SSD_NAME="${COLIMA_SSD_NAME:-ContainerImage}"
 SSD_MOUNT="/Volumes/$SSD_NAME"
 SSD_DATA_PATH="$SSD_MOUNT/colima-data"
 WORKSPACE_SSD_DIR="$SSD_MOUNT/workspace"

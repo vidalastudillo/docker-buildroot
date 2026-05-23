@@ -189,11 +189,11 @@ affect build data.
 The VM disk (`COLIMA_DISK`) holds only Docker images and layers; build data
 lives on the SSD directly.
 
-The SSD name defaults to `Container Image`. Override via environment variable
+The SSD name defaults to `ContainerImage`. Override via environment variable
 for persistent configuration (e.g., add to `~/.zprofile`):
 
 ```shell
-export COLIMA_SSD_NAME="Container Image"                     # default; change if your SSD has a different name
+export COLIMA_SSD_NAME="ContainerImage"                      # default; change if your SSD has a different name
 export COLIMA_HOME="/Volumes/$COLIMA_SSD_NAME/colima-data"   # required: keeps Colima data on the SSD
 export COLIMA_CPUS=4                                         # default: 4
 export COLIMA_MEMORY=10                                      # default: 10 (GiB)
