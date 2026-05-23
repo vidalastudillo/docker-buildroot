@@ -23,6 +23,14 @@
 #    to replace functionality lost after removing Docker Desktop.
 # 7. Credential Helper: Automatically detects and fixes orphaned 'desktop'
 #    credential helper settings left by Docker Desktop.
+# 8. Data Disk (fstab): Lima creates a 800GB data disk (vdb1, label
+#    'lima-colima') for Docker storage and mounts it at /mnt/lima-colima via a
+#    per-boot cloud-init script (05-lima-disks.sh). On the VZ backend this
+#    script fails silently: vdb1 is not yet accessible when the script runs,
+#    causing Docker to use the 20GB rootDisk instead and filling it up.
+#    Fix: do_setup adds LABEL=lima-colima to /etc/fstab inside the VM so
+#    systemd-fstab-generator mounts vdb1 during local-fs.target — before
+#    Docker starts — on every subsequent boot.
 #
 # OVERRIDABLE ENVIRONMENT VARIABLES:
 #   COLIMA_SSD_NAME   Name of the external SSD volume (default: "Container Image")
@@ -106,6 +114,36 @@ check_docker_credentials() {
     fi
 }
 
+check_data_disk() {
+    if ! colima status 2>&1 | grep -q "is running"; then
+        return 0  # VM not running; nothing to check
+    fi
+    local source
+    source=$(colima ssh -- findmnt /mnt/lima-colima -o SOURCE --noheadings 2>/dev/null || true)
+    if echo "$source" | grep -q "vdb"; then
+        log "Data disk: OK — /dev/vdb1 mounted at /mnt/lima-colima."
+    else
+        warn "Data disk /dev/vdb1 is NOT mounted at /mnt/lima-colima."
+        warn "Docker is using the rootDisk, which will fill up quickly during builds."
+        warn "Run: ./scripts/colima.sh fix-data-disk"
+    fi
+}
+
+ensure_data_disk_fstab() {
+    # Adds LABEL=lima-colima to /etc/fstab inside the VM so systemd mounts
+    # vdb1 during local-fs.target (before Docker starts) on every boot.
+    # This is the permanent fix for Lima's timing bug on the VZ backend.
+    log "Ensuring data disk fstab entry inside the VM..."
+    colima ssh -- sudo bash -s << 'EOF'
+if grep -q "lima-colima" /etc/fstab; then
+    echo "fstab entry already present."
+else
+    echo "LABEL=lima-colima  /mnt/lima-colima  ext4  discard,commit=30,errors=remount-ro  0  2" >> /etc/fstab
+    echo "fstab entry added."
+fi
+EOF
+}
+
 configure_plugins() {
     log "Configuring Docker plugins (buildx/compose)..."
     PLUGIN_DIR="$HOME/.docker/cli-plugins"
@@ -134,13 +172,16 @@ show_usage() {
     echo "COLIMA_CPUS, COLIMA_MEMORY, COLIMA_DISK."
     echo ""
     echo "Options:"
-    echo "  setup    Initial configuration. Run once: creates the VM on the SSD and"
-    echo "           configures required Docker plugins (buildx/compose)."
-    echo "           Defaults: $CPU_CORES CPUs, ${MEMORY_GB}GB RAM, ${DISK_SIZE_GB}GB disk."
-    echo "  up       Starts the infrastructure if not already running."
-    echo "           Validates SSD presence. Use this for daily startup."
-    echo "  stop     Cleanly shuts down the VM. Run before disconnecting the SSD."
-    echo "  status   Shows Colima VM status, real disk usage on SSD, and active Docker context."
+    echo "  setup          Initial configuration. Run once: creates the VM on the SSD,"
+    echo "                 configures required Docker plugins (buildx/compose), and"
+    echo "                 fixes the data disk fstab entry (see Engineering Decision #8)."
+    echo "                 Defaults: $CPU_CORES CPUs, ${MEMORY_GB}GB RAM, ${DISK_SIZE_GB}GB disk."
+    echo "  up             Starts the infrastructure if not already running."
+    echo "                 Validates SSD presence and data disk. Use this for daily startup."
+    echo "  stop           Cleanly shuts down the VM. Run before disconnecting the SSD."
+    echo "  status         Shows VM status, disk usage, and data disk health."
+    echo "  fix-data-disk  Migrates Docker data from the rootDisk to the data disk"
+    echo "                 (COLIMA_DISK=${DISK_SIZE_GB}GB). Run once on VMs created before this fix."
     echo ""
 }
 
@@ -168,6 +209,20 @@ do_setup() {
     ensure_docker_context
     check_docker_credentials
     configure_plugins
+    ensure_data_disk_fstab
+    # Restart so systemd-fstab-generator picks up the new fstab entry and
+    # mounts the data disk during local-fs.target, before Docker starts.
+    log "Restarting VM to apply fstab..."
+    colima stop || warn "Stop failed; attempting start anyway."
+    colima start \
+        --cpus $CPU_CORES \
+        --memory $MEMORY_GB \
+        --disk $DISK_SIZE_GB \
+        --vm-type vz \
+        --mount-type virtiofs \
+        --mount "$PROJECT_ROOT:w"
+    ensure_docker_context
+    check_data_disk
     log "Setup completed successfully."
 }
 
@@ -190,6 +245,7 @@ do_up() {
         check_docker_credentials
         log "Infrastructure is ready."
     fi
+    check_data_disk
 }
 
 do_stop() {
@@ -203,30 +259,90 @@ do_status() {
     log "Colima VM Status:"
     colima status || true
     echo "---"
-    log "SSD Disk Usage:"
-    if [ -d "$SSD_DATA_PATH/default" ]; then
-        # Search for any large disk-related files (ext4, raw, qcow2, diffdisk, basedisk)
-        DISK_FILES=$(find "$SSD_DATA_PATH/default" -maxdepth 1 -type f \( -name "*.ext4" -o -name "*.raw" -o -name "*.qcow2" -o -name "diffdisk" -o -name "basedisk" \) 2>/dev/null)
-        if [ -n "$DISK_FILES" ]; then
-            du -sh $DISK_FILES
-        else
-            log "No disk image found in $SSD_DATA_PATH/default. Listing folder content:"
-            ls -lh "$SSD_DATA_PATH/default"
-        fi
-    else
-        echo "Data directory not found. VM might not be initialized."
-    fi
+    log "VM Disk Usage:"
+    colima ssh -- df -h 2>/dev/null || warn "Could not SSH into VM to check disk usage."
+    echo "---"
+    check_data_disk
     echo "---"
     log "Active Docker Context:"
     docker context ls | grep "*"
 }
 
+do_fix_data_disk() {
+    check_ssd
+
+    local source
+    source=$(colima ssh -- findmnt /mnt/lima-colima -o SOURCE --noheadings 2>/dev/null || true)
+    if echo "$source" | grep -q "vdb"; then
+        log "Data disk is already correctly mounted. Nothing to do."
+        return 0
+    fi
+
+    local used
+    used=$(colima ssh -- du -sh /mnt/lima-colima 2>/dev/null | cut -f1 || echo "unknown")
+    warn "Docker data (~$used) is on the rootDisk instead of the data disk (COLIMA_DISK=${DISK_SIZE_GB}GB)."
+    warn "This command will:"
+    warn "  1. Stop Docker inside the VM"
+    warn "  2. Copy ~$used to /dev/vdb1 (may take several minutes)"
+    warn "  3. Add /dev/vdb1 to /etc/fstab inside the VM"
+    warn "  4. Restart the Colima VM"
+    read -r -p "Proceed? [y/N] " confirm
+    [[ "$confirm" =~ ^[Yy]$ ]] || { log "Aborted."; return 0; }
+
+    log "Step 1/3: Copying Docker data to the data disk..."
+    colima ssh -- sudo bash -s << 'EOMIGRATE'
+set -e
+trap 'umount /tmp/vdb1-migrate 2>/dev/null; rmdir /tmp/vdb1-migrate 2>/dev/null' ERR
+
+if ! blkid /dev/vdb1 | grep -q ext4; then
+    echo "ERROR: /dev/vdb1 not found or not formatted as ext4."; exit 1
+fi
+
+# Stop Docker; containerd stops as a side-effect via systemd dependencies.
+systemctl stop docker
+systemctl stop containerd 2>/dev/null || true
+
+mkdir -p /tmp/vdb1-migrate
+mount /dev/vdb1 /tmp/vdb1-migrate
+
+echo "Copying data (this may take several minutes)..."
+if command -v rsync >/dev/null 2>&1; then
+    rsync -a --info=progress2 /mnt/lima-colima/. /tmp/vdb1-migrate/
+else
+    cp -av /mnt/lima-colima/. /tmp/vdb1-migrate/
+fi
+
+umount /tmp/vdb1-migrate
+rmdir /tmp/vdb1-migrate
+
+if ! grep -q "lima-colima" /etc/fstab; then
+    echo "LABEL=lima-colima  /mnt/lima-colima  ext4  discard,commit=30,errors=remount-ro  0  2" >> /etc/fstab
+fi
+echo "Data copied and fstab updated."
+EOMIGRATE
+
+    log "Step 2/3: Restarting Colima VM to apply fstab..."
+    colima stop
+    colima start \
+        --cpus $CPU_CORES \
+        --memory $MEMORY_GB \
+        --disk $DISK_SIZE_GB \
+        --vm-type vz \
+        --mount-type virtiofs \
+        --mount "$PROJECT_ROOT:w"
+    ensure_docker_context
+
+    log "Step 3/3: Verifying fix..."
+    check_data_disk
+}
+
 # --- ENTRYPOINT ---
 
 case "$1" in
-    setup)  do_setup ;;
-    up)     do_up ;;
-    stop)   do_stop ;;
-    status) do_status ;;
-    *)      show_usage ;;
+    setup)          do_setup ;;
+    up)             do_up ;;
+    stop)           do_stop ;;
+    status)         do_status ;;
+    fix-data-disk)  do_fix_data_disk ;;
+    *)              show_usage ;;
 esac

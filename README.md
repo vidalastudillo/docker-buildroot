@@ -173,9 +173,21 @@ configuration. Colima solves this by symlinking `~/.colima` to the external
 SSD before the VM is created.
 
 ```shell
-./scripts/colima.sh setup   # once — creates the VM on the external SSD
-./scripts/colima.sh up      # daily startup
+./scripts/colima.sh setup         # once — creates the VM on the external SSD
+./scripts/colima.sh up            # daily startup
+./scripts/colima.sh status        # verify VM and data disk health
+./scripts/colima.sh fix-data-disk # one-time repair for VMs created before this fix
 ```
+
+**VM disk architecture:** Colima provisions two virtual disks inside the VM:
+- `rootDisk` — OS and Docker engine (configured in `colima.yaml`)
+- `disk` — all Docker data: images, named volumes, CCache (default: `COLIMA_DISK=800` GiB)
+
+Due to a timing bug in Lima's VZ backend, the data disk may not mount
+automatically, causing Docker to silently use the rootDisk until it fills up.
+`setup` prevents this by writing a persistent `fstab` entry inside the VM so the
+OS mounts the data disk before Docker starts. For existing VMs, run
+`fix-data-disk` once to migrate and apply the fix.
 
 The SSD name defaults to `Container Image`. Override via environment variable
 for persistent configuration (e.g., add to `~/.zprofile`):
