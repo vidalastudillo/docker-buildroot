@@ -27,6 +27,9 @@
 #    backed by $SSD_MOUNT/workspace. This keeps build data (CCache, downloads,
 #    outputs) on the external SSD, independent of the Lima VM lifecycle.
 #    Survives 'colima delete' and Colima/Docker updates.
+#    COLIMA_HOME is exported to $SSD_DATA_PATH so Colima stores its instance
+#    data on the SSD without requiring a ~/.colima symlink (which newer Colima
+#    versions reject).
 #
 # OVERRIDABLE ENVIRONMENT VARIABLES:
 #   COLIMA_SSD_NAME   Name of the external SSD volume (default: "Container Image")
@@ -44,9 +47,12 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 SSD_NAME="${COLIMA_SSD_NAME:-Container Image}"
 SSD_MOUNT="/Volumes/$SSD_NAME"
-COLIMA_HOME="$HOME/.colima"
 SSD_DATA_PATH="$SSD_MOUNT/colima-data"
 WORKSPACE_SSD_DIR="$SSD_MOUNT/workspace"
+
+# Direct Colima to store its data on the external SSD.
+# COLIMA_HOME is the canonical env var supported by Colima; no symlink needed.
+export COLIMA_HOME="$SSD_DATA_PATH"
 
 # Resources (with environment variable overrides)
 CPU_CORES=${COLIMA_CPUS:-4}
@@ -65,24 +71,10 @@ check_ssd() {
     fi
 }
 
-check_symlink() {
-    # If a real directory exists at ~/.colima, abort to avoid overwriting internal data
-    if [ -d "$COLIMA_HOME" ] && [ ! -L "$COLIMA_HOME" ]; then
-        error "$COLIMA_HOME exists as a real directory. Move or delete it manually to allow SSD symlinking."
-    fi
-    # Create the link if it doesn't exist
-    if [ ! -L "$COLIMA_HOME" ]; then
-        log "Configuring external SSD persistence..."
-        mkdir -p "$SSD_DATA_PATH"
-        ln -s "$SSD_DATA_PATH" "$COLIMA_HOME"
-    fi
-}
 
 ensure_docker_context() {
     log "Ensuring Docker context and socket..."
-    # Switch Docker context to Colima
     docker context use colima >/dev/null 2>&1 || docker context use default
-    # Create symlink for compatibility with tools looking for the standard socket
     sudo ln -sf "$COLIMA_HOME/default/docker.sock" /var/run/docker.sock
 }
 
@@ -177,8 +169,7 @@ show_usage() {
 do_setup() {
     log "Starting initial configuration (SETUP)..."
     check_ssd
-    check_symlink
-    mkdir -p "$WORKSPACE_SSD_DIR"
+    mkdir -p "$SSD_DATA_PATH" "$WORKSPACE_SSD_DIR"
 
     # Flags verified against 'colima start --help':
     # --cpus: number of CPUs
@@ -205,7 +196,6 @@ do_setup() {
 
 do_up() {
     check_ssd
-    check_symlink
 
     if colima status 2>&1 | grep -q "is running"; then
         log "Infrastructure is already running."
