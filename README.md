@@ -29,20 +29,17 @@ docker-buildroot/              ← this repo (shared infrastructure)
   images/  target/  graphs/   ← build outputs, organized by project/target
 ```
 
-The Docker named volume `buildroot_workspace` holds all intermediate build
-artifacts (object files, CCache, downloads). It lives inside the Docker VM,
-keeping heavy I/O off the host filesystem.
+The Docker named volume `buildroot_workspace` is a bind-mount volume backed
+by a directory on the external SSD (`workspace/`). Build data (CCache,
+downloads, intermediate objects) lives on the SSD independently of the Lima
+VM — surviving Colima updates and reinstalls.
 
 
 ## Quick Setup
 
 > [!IMPORTANT]
-> **Read-Only Buildroot & SSD Protection**
-> To protect the host SSD (macOS) and ensure build integrity, the `buildroot/` directory is mounted as **Read-Only** (`:ro`). All builds MUST use `O=` and `BR2_DL_DIR` to point to the `/workspace/` volume. If you see a `Read-only file system` error, you are likely missing these parameters.
-
-
-> **macOS users:** if you plan to use an external SSD with Colima, complete the
-> [macOS setup](#macos-notes) before step 2 — the VM must be running before any `docker` command.
+> **Read-Only Buildroot**
+> The `buildroot/` directory is mounted as **Read-Only** (`:ro`) inside the container. All builds MUST use `O=` and `BR2_DL_DIR` to point to the `/workspace/` volume. If you see a `Read-only file system` error, you are missing these parameters.
 
 ### 1. Clone this repo and dependencies
 
@@ -55,7 +52,18 @@ git clone https://github.com/<user>/<my_project> ./externals/my_project
 
 See [Buildroot source](#buildroot-source-buildroot_version) for details and the manual alternative.
 
-### 2. Build the Docker image
+### 2. Start the infrastructure (macOS)
+
+```shell
+./scripts/colima.sh setup
+```
+
+Starts the Colima VM on the external SSD and creates the `buildroot_workspace`
+Docker volume backed by the SSD. Run once per machine. See [macOS notes](#macos-notes).
+
+> **Linux users:** ensure Docker is running, then skip to step 3.
+
+### 3. Build the Docker image
 
 ```shell
 docker buildx build -t va_buildroot .
@@ -69,13 +77,7 @@ export BUILDROOT_IMAGE=my_custom_image
 docker buildx build -t "$BUILDROOT_IMAGE" .
 ```
 
-### 3. Create the shared workspace volume
-
-```shell
-docker volume create buildroot_workspace
-```
-
-This volume is shared across all externals. It holds:
+The `buildroot_workspace` volume is shared across all externals and holds:
 
 | Path inside volume | Contents |
 |--------------------|----------|
@@ -173,21 +175,19 @@ configuration. Colima solves this by symlinking `~/.colima` to the external
 SSD before the VM is created.
 
 ```shell
-./scripts/colima.sh setup         # once — creates the VM on the external SSD
-./scripts/colima.sh up            # daily startup
-./scripts/colima.sh status        # verify VM and data disk health
-./scripts/colima.sh fix-data-disk # one-time repair for VMs created before this fix
+./scripts/colima.sh setup   # once — creates the VM and workspace volume on the SSD
+./scripts/colima.sh up      # daily startup
+./scripts/colima.sh stop    # safe shutdown before disconnecting the SSD
+./scripts/colima.sh status  # VM status and workspace size
 ```
 
-**VM disk architecture:** Colima provisions two virtual disks inside the VM:
-- `rootDisk` — OS and Docker engine (configured in `colima.yaml`)
-- `disk` — all Docker data: images, named volumes, CCache (default: `COLIMA_DISK=800` GiB)
+The `buildroot_workspace` Docker volume is backed by `workspace/` on the
+external SSD. It is created by `setup` as a bind-mount volume and persists
+independently of the Lima VM — a `colima delete` or Colima update does not
+affect build data.
 
-Due to a timing bug in Lima's VZ backend, the data disk may not mount
-automatically, causing Docker to silently use the rootDisk until it fills up.
-`setup` prevents this by writing a persistent `fstab` entry inside the VM so the
-OS mounts the data disk before Docker starts. For existing VMs, run
-`fix-data-disk` once to migrate and apply the fix.
+The VM disk (`COLIMA_DISK`) holds only Docker images and layers; build data
+lives on the SSD directly.
 
 The SSD name defaults to `Container Image`. Override via environment variable
 for persistent configuration (e.g., add to `~/.zprofile`):
@@ -196,7 +196,7 @@ for persistent configuration (e.g., add to `~/.zprofile`):
 export COLIMA_SSD_NAME="My SSD"   # default: "Container Image"
 export COLIMA_CPUS=4               # default: 4
 export COLIMA_MEMORY=10            # default: 10 (GiB)
-export COLIMA_DISK=800             # default: 800 (GiB)
+export COLIMA_DISK=100             # default: 100 (GiB)
 ```
 
 

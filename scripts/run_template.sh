@@ -26,7 +26,8 @@
 set -e
 
 # Ensure the shared workspace volume exists
-docker volume inspect buildroot_workspace >/dev/null 2>&1 || docker volume create buildroot_workspace
+docker volume inspect buildroot_workspace >/dev/null 2>&1 ||
+    { echo "ERROR: workspace volume not found — run ./scripts/colima.sh setup first" >&2; exit 1; }
 
 
 # -----------------------------------------------------------------------------
