@@ -193,7 +193,7 @@ The SSD name defaults to `Container Image`. Override via environment variable
 for persistent configuration (e.g., add to `~/.zprofile`):
 
 ```shell
-export COLIMA_SSD_NAME="My SSD"   # default: "Container Image"
+export COLIMA_SSD_NAME="Container Image"  # default; change if your SSD has a different name
 export COLIMA_CPUS=4               # default: 4
 export COLIMA_MEMORY=10            # default: 10 (GiB)
 export COLIMA_DISK=100             # default: 100 (GiB)
