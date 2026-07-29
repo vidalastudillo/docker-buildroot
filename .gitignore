@@ -16,3 +16,8 @@
 /images/
 /target/
 /graphs/
+
+# AI Agents
+AGENTS.md
+CLAUDE.md
+GEMINI.md
