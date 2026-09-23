@@ -1,6 +1,3 @@
 # Each BR2_EXTERNAL is an independent repository cloned into this directory.
-# Ignore everything so those repos are never accidentally committed here.
-*
-
-# ...except this file.
-!.gitignore
+# .git/info/exclude lists each one (README.md, step 1), not this file, so a
+# search from the root of this repository reads them.

@@ -49,7 +49,10 @@ git clone https://github.com/vidalastudillo/docker-buildroot
 cd docker-buildroot
 ./scripts/bootstrap.sh
 git clone https://github.com/<user>/<my_project> ./externals/my_project
+echo "/externals/my_project/" >> .git/info/exclude
 ```
+
+The last line keeps git from offering the external repository for commit. It goes in `.git/info/exclude`, which stays on this machine, and not in `.gitignore`, so a search from this root still reads the external.
 
 See [Buildroot source](#buildroot-source-buildroot_version) for details and the manual alternative.
 
