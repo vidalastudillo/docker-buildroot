@@ -169,13 +169,19 @@ do_setup() {
     # --mount: host directories exposed inside the VM (path:writable)
     #   PROJECT_ROOT is mounted so run scripts can bind-mount buildroot/,
     #   externals/, and output directories (images/, target/, graphs/).
+    # --mount-inotify=false: Colima relays a host file write by running
+    #   chmod <mode read on the host> in the VM; when that lands after the
+    #   build's own chmod, the file reverts to its creation mode (issue #93 of
+    #   vidalastudillo/buildroot_external-in). Passed on every start because
+    #   colima.yaml otherwise keeps the last value.
     colima start \
         --cpus $CPU_CORES \
         --memory $MEMORY_GB \
         --disk $DISK_SIZE_GB \
         --vm-type vz \
         --mount-type virtiofs \
-        --mount "$PROJECT_ROOT:w"
+        --mount "$PROJECT_ROOT:w" \
+        --mount-inotify=false
 
     ensure_docker_context
     check_docker_credentials
@@ -197,7 +203,8 @@ do_up() {
             --disk $DISK_SIZE_GB \
             --vm-type vz \
             --mount-type virtiofs \
-            --mount "$PROJECT_ROOT:w"
+            --mount "$PROJECT_ROOT:w" \
+            --mount-inotify=false
         ensure_docker_context
         check_docker_credentials
         log "Infrastructure is ready."
