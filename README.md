@@ -25,7 +25,6 @@ docker-buildroot/              ← this repo (shared infrastructure)
     my_project/                ← a BR2_EXTERNAL repo (cloned here)
       run_my_target.sh         ← calls docker from the root of this repo
     another_project/           ← another BR2_EXTERNAL repo
-  _locals/                     ← secrets and local config (gitignored, not committed)
   images/  target/  graphs/   ← build outputs, organized by project/target
 ```
 
@@ -156,15 +155,9 @@ To use a different Buildroot fork or branch, edit `BUILDROOT_VERSION` before
 running the script.
 
 
-## Local secrets (`_locals/`)
+## Build secrets
 
-Sensitive files (API tokens, keys, certificates) that individual BR2_EXTERNAL
-trees need at build time are placed under `_locals/` and mounted into the
-container as Docker secrets. This directory is gitignored and must be created
-manually on each machine.
-
-Each external defines its own namespace inside `_locals/`. Refer to the
-run script and documentation of that external for the exact layout required.
+The files a BR2_EXTERNAL tree needs at build time and that no repository may hold (tokens, keys, certificates) live in a directory outside this repository, which each machine names with `IN_SECRETS_HOST_PATH`. `scripts/colima.sh` mounts it read-only into the VM, and the run scripts of the `in` tree mount it into the container at `/run/secrets/in`. Where that directory is and what it holds is `dev/setup.md` §Environment files of the IN repository.
 
 
 ## macOS notes
