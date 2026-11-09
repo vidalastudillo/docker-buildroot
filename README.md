@@ -133,12 +133,7 @@ The `BUILDROOT_IMAGE` variable is read from the environment, defaulting to
 
 ## Buildroot source (`BUILDROOT_VERSION`)
 
-The Buildroot fork and branch used by this project are defined in `BUILDROOT_VERSION`:
-
-```
-BUILDROOT_REPO=https://github.com/vidalastudillo/buildroot.git
-BUILDROOT_BRANCH=2025.11.x
-```
+The Buildroot fork and branch used by this project are defined in `BUILDROOT_VERSION`.
 
 `scripts/bootstrap.sh` reads this file and clones or updates `buildroot/` to
 the tip of the configured branch. Using the script is recommended: any
