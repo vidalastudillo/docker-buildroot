@@ -41,10 +41,11 @@
 #   COLIMA_DISK       Disk size in GiB for the VM (default: 100)
 #
 # REQUIRED ENVIRONMENT VARIABLES:
-#   IN_SECRETS_HOST_PATH  Directory of the build's secrets, outside PROJECT_ROOT
-#                         (IN repository, dev/setup.md §Environment files).
-#                         Colima exposes to the VM only what it mounts, so it
-#                         is mounted too, read-only.
+#   VA_PRIVATE_STORE      The private store, outside PROJECT_ROOT (IN repository,
+#                         dev/setup.md §The private store). Colima exposes to the
+#                         VM only what it mounts, so two of its folders are
+#                         mounted read-only: in/build/, the build's secrets, and
+#                         in/registry/boxes/, which the Creator images carry.
 # -----------------------------------------------------------------------------
 
 set -e
@@ -62,8 +63,9 @@ SSD_DATA_PATH="$SSD_MOUNT/colima-data"
 # COLIMA_HOME is the canonical env var supported by Colima; no symlink needed.
 export COLIMA_HOME="$SSD_DATA_PATH"
 
-# The build's secrets, mounted read-only (no :w suffix).
-SECRETS_MOUNT="${IN_SECRETS_HOST_PATH:-}"
+# The two folders of the private store a build reads, mounted read-only (no :w suffix).
+SECRETS_MOUNT="${VA_PRIVATE_STORE:+${VA_PRIVATE_STORE}/in/build}"
+REGISTRY_MOUNT="${VA_PRIVATE_STORE:+${VA_PRIVATE_STORE}/in/registry/boxes}"
 
 # Resources (with environment variable overrides)
 CPU_CORES=${COLIMA_CPUS:-4}
@@ -83,9 +85,12 @@ check_ssd() {
 }
 
 check_secrets() {
-    if [ -z "$SECRETS_MOUNT" ] || [ ! -d "$SECRETS_MOUNT" ]; then
-        error "IN_SECRETS_HOST_PATH is unset or not a directory: '$SECRETS_MOUNT' (is its volume open?). Aborting."
+    if [ -z "${VA_PRIVATE_STORE:-}" ] || [ ! -d "$VA_PRIVATE_STORE" ]; then
+        error "VA_PRIVATE_STORE is unset or not a directory: '${VA_PRIVATE_STORE:-}' (is its volume open?). Aborting."
     fi
+    for folder in "$SECRETS_MOUNT" "$REGISTRY_MOUNT"; do
+        [ -d "$folder" ] || error "The private store lacks '$folder'. Aborting."
+    done
 }
 
 
@@ -185,8 +190,8 @@ do_setup() {
     # --mount: host directories exposed inside the VM (path:writable)
     #   PROJECT_ROOT is mounted so run scripts can bind-mount buildroot/,
     #   externals/, and output directories (images/, target/, graphs/).
-    #   SECRETS_MOUNT is mounted read-only: the run scripts bind-mount it at
-    #   /run/secrets/in.
+    #   SECRETS_MOUNT and REGISTRY_MOUNT are mounted read-only: the run scripts
+    #   bind-mount them at /run/secrets/in and /run/secrets/in_registry.
     # --mount-inotify=false: Colima relays a host file write by running
     #   chmod <mode read on the host> in the VM; when that lands after the
     #   build's own chmod, the file reverts to its creation mode (issue #93 of
@@ -200,6 +205,7 @@ do_setup() {
         --mount-type virtiofs \
         --mount "$PROJECT_ROOT:w" \
         --mount "$SECRETS_MOUNT" \
+        --mount "$REGISTRY_MOUNT" \
         --mount-inotify=false
 
     ensure_docker_context
@@ -217,8 +223,10 @@ do_up() {
         log "Infrastructure is already running."
         # A VM started before this mount existed does not see the secrets, and a
         # bind mount of a path the VM lacks gives the build an empty directory.
-        colima ssh -- test -d "$SECRETS_MOUNT" ||
-            error "The running VM does not mount $SECRETS_MOUNT. Run: ./scripts/colima.sh stop, then up."
+        for folder in "$SECRETS_MOUNT" "$REGISTRY_MOUNT"; do
+            colima ssh -- test -d "$folder" ||
+                error "The running VM does not mount $folder. Run: ./scripts/colima.sh stop, then up."
+        done
     else
         log "Starting infrastructure..."
         colima start \
@@ -229,6 +237,7 @@ do_up() {
             --mount-type virtiofs \
             --mount "$PROJECT_ROOT:w" \
             --mount "$SECRETS_MOUNT" \
+            --mount "$REGISTRY_MOUNT" \
             --mount-inotify=false
         ensure_docker_context
         check_docker_credentials

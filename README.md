@@ -152,7 +152,7 @@ running the script.
 
 ## Build secrets
 
-The files a BR2_EXTERNAL tree needs at build time and that no repository may hold (tokens, keys, certificates) live in a directory outside this repository, which each machine names with `IN_SECRETS_HOST_PATH`. `scripts/colima.sh` mounts it read-only into the VM, and the run scripts of the `in` tree mount it into the container at `/run/secrets/in`. Where that directory is and what it holds is `dev/setup.md` §Environment files of the IN repository.
+The files a BR2_EXTERNAL tree needs at build time and that no repository may hold (tokens, keys, certificates) live in the private store, outside this repository, whose location each machine names with `VA_PRIVATE_STORE`. The build reads two of its folders: `in/build/`, the build's secrets, and `in/registry/boxes/`, the registry the Creator images carry. `scripts/colima.sh` mounts both read-only into the VM. The run scripts of the `in` tree mount `in/build/` into the container at `/run/secrets/in`, and the Creator's scripts also mount `in/registry/boxes/` at `/run/secrets/in_registry`. What each folder of the store holds is `dev/setup.md` §The private store of the IN repository.
 
 
 ## macOS notes
